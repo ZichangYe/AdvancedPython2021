@@ -5,6 +5,9 @@ import os
 from PIL import Image
 import cv2
 import time
+from itertools import product
+from matplotlib import image
+from matplotlib import pyplot as plt
 
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
@@ -68,6 +71,22 @@ img_rgb = output[:, :, ::-1]
 # image = face_recognition.load_image_file(path + f"/{rank}.png")
 face_locations = face_recognition.face_locations(img_rgb, model='knn')
 print(f"rank {rank} with {len(face_locations)} faces detected!")
+
+image_output = np.copy(output)
+
+for face in face_locations:
+    top, right, bottom, left = face
+    convert_range = product(range(top,bottom),range(left,right))
+    for i in convert_range:
+        image_output[i] = 255 - image_output[i]
+
+plt.gca().set_axis_off()
+plt.subplots_adjust(top = 1, bottom = 0, right = 1, left = 0, hspace = 0, wspace = 0)
+plt.margins(0,0)
+plt.gca().xaxis.set_major_locator(plt.NullLocator())
+plt.gca().yaxis.set_major_locator(plt.NullLocator())
+plt.imshow(image_output)
+plt.savefig('./output_{}.jpg'.format(rank), bbox_inches = 'tight', pad_inches = 0)
 
 print(time.time() - ts)
 
