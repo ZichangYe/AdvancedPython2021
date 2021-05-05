@@ -32,8 +32,8 @@ from time import time
 from array_mp4_conversion import array_to_mp4, mp4_to_array
 from numba import jit, prange
 from collections import defaultdict
-cimport numpy as np
-ctypedef np.uint8_t D_TYPE
+# cimport numpy as np
+# ctypedef np.uint8_t D_TYPE
 
 path = os.getcwd()
 
@@ -49,6 +49,7 @@ class video_transformer_base:
                 display=False):
         
         self.video_path = os.path.join(path, "data", file_name)
+        self.video_array, self.fps = mp4_to_array(self.video_path)
         self.display = display
         self.save_path = save_path
         self.file_name = file_name
@@ -69,10 +70,15 @@ class video_transformer_base:
         '''                    
         video_capture = cv2.VideoCapture(self.video_path)
         frame_count = 0
+        output_frames = []
         while video_capture.isOpened():    
             # Grab a single frame of video
             ret, frame = video_capture.read()
-            
+            # try:
+            #   frame = torch.from_numpy(frame).to(self.device)
+            # except:
+            #   print(ret)
+
             # Bail out when the video file ends
             if not ret:
                 video_capture.release()
@@ -101,11 +107,12 @@ class video_transformer_base:
                 plt.imshow(after_effect_frame)
                 plt.show()
                 clear_output(wait=True)
-            im = Image.fromarray(after_effect_frame)
-            im.save(os.path.join(self.save_path, f"{self.file_name}_prcs_{frame_count}.png"))
-                
+            # im = Image.fromarray(after_effect_frame)
+            # im.save(os.path.join(self.save_path, f"{self.file_name}_prcs_{frame_count}.png"))
+            output_frames.append(after_effect_frame)
         self.num_frames = frame_count
-        
+        self.des_arr = np.array(output_frames)
+
     def face_detection(self, frame):
         '''
         Face detection with package face_recognition.
@@ -159,25 +166,43 @@ class video_transformer_base:
         k = 1 / (radius*2+1)**2
         des_img = np.copy(frame)
         height, width, _ = des_img.shape
-        try:
-            for location in locations:
-                top, right, bottom, left = location
-                t_ = max(top+radius,0)
-                b_ = min(bottom-radius, height)
-                l_ = max(left+radius,0)
-                r_ = min(right-radius, width)
-                if t_ >= b_ or l_ >= r_:
-                    continue
+        # try:
+        for location in locations:
+            top, right, bottom, left = location
+            t_ = max(top+radius,0)
+            b_ = min(bottom-radius, height)
+            l_ = max(left+radius,0)
+            r_ = min(right-radius, width)
+            if t_ >= b_ or l_ >= r_:
+                continue
 
-                for i, j in product(range(t_, b_), range(l_, r_)):
-                    kernel = frame[i-radius:i+radius+1, j-radius:j+radius+1, :]
-                    sumed = np.sum(kernel, axis = (0,1)) * k
-                    des_img[i, j] = sumed.astype(np.uint8)
-        except:
-            pass
+            for i, j in product(range(t_, b_), range(l_, r_)):
+                kernel = frame[i-radius:i+radius+1, j-radius:j+radius+1, :]
+                sumed = np.sum(kernel, axis = (0,1)) * k
+                des_img[i, j] = sumed.astype(np.uint8)
+        # except:
+        #     pass
         
         return des_img    
-
+    
+    # construct transformed gif
+    def output(self):
+        images = []
+        frames_count = list(range(1,self.num_frames))
+        
+        for i in frames_count:
+            try:
+                images.append(imageio.imread(
+                    os.path.join(self.save_path, f"{self.file_name}_prcs_{i}.png")))
+            except:
+                pass
+        imageio.mimsave(os.path.join(self.save_path, f"{self.file_name}_prcs.gif"), images)
+    
+    def write_to_video(self, output_filename):
+        '''
+        Write out the video with filter to mp4.
+        '''
+        array_to_mp4(output_filename, self.des_arr, self.fps)
 
 class video_transformer_parallel(video_transformer_base):
     '''
@@ -185,11 +210,13 @@ class video_transformer_parallel(video_transformer_base):
     '''
     def __init__(self, path, save_path, file_name, device='cpu',display=False):
         video_transformer_base.__init__(self, path, save_path, file_name, device, display)
-        self.video_array, self.fps = mp4_to_array(self.video_path)
+        
         self.locations = None
         self.des_arr = None
-    
 
+        torch.from_numpy(self.video_array).to(self.device)
+    
+    #@jit(nopython=False, fastmath=True)
     def mean_blur(self, image, des_img, locations, radius):
         '''
         mean_blur function with a source and destination image, the logic remains the same.
@@ -213,12 +240,12 @@ class video_transformer_parallel(video_transformer_base):
                     sumed = np.sum(kernel, axis= 0, dtype=np.uint32)
                     sumed = np.sum(sumed, axis=0)
                     des_img[i, j, :] = (sumed * k).astype(np.uint8)
-
+    #@jit(nopython=False, parallel=True)
     def get_face_locations(self, face_detection_model):
         '''
         get face_locations on entire video as an array.
         '''
-        des_arr = self.video_array.copy()
+        des_arr = torch.from_numpy(self.video_array.copy()).to(self.device)
         
         if face_detection_model != 'mtcnn':
             locations = list(map(self.face_detection, des_arr))
@@ -226,8 +253,8 @@ class video_transformer_parallel(video_transformer_base):
             locations = list(map(self.face_detection_mtcnn, des_arr))    
 
         return locations
-
-    def filter_on_video(self, filter_func, face_detection_model = 'mtcnn', radius = 10):
+    #@jit(nopython=False, parallel=True)
+    def filter_on_video(self, filter_func, face_detection_model = 'mtcnn', radius = 15):
         '''
         Produce filter on the video.
         '''
@@ -237,9 +264,4 @@ class video_transformer_parallel(video_transformer_base):
         for i in prange(frame_size):
             filter_func(self.video_array[i], self.des_arr[i], self.locations[i], radius)
 
-        
-    def write_to_video(self):
-        '''
-        Write out the video with filter to mp4.
-        '''
-        array_to_mp4(self.file_name, self.des_arr, self.fps)    
+      
