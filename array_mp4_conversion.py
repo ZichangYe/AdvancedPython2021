@@ -26,16 +26,22 @@ def mp4_to_array(filename):
     frameCount = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     frameWidth = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     frameHeight = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fps = cap.get(cv2.CAP_PROP_FPS)
+    # print(f'hello: {frameCount}, {frameWidth}, {frameHeight}, {cap.isOpened()}')
 
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    
+    
     buf = np.empty((frameCount, frameHeight, frameWidth, 3), np.dtype('uint8'))
 
     fc = 0
     ret = True
-
-    while (fc < frameCount and ret):
-        ret, buf[fc] = cap.read()
-        fc += 1
+    
+    while (fc < frameCount and ret and cap.isOpened()):
+        try:
+            ret, buf[fc] = cap.read()
+            fc += 1
+        except:
+            pass
 
     cap.release()
 
