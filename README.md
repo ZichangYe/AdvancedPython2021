@@ -9,9 +9,9 @@ This repo hosts our codes for Advanced Python for Data Science (Spring 2021). Ou
 - CUDA Programming
 
 The repo is structured as the following:
-
 - All of our solutions are organized in ```final_submission.ipynb``` with detailed documentation. We developed our solution in Google Colab.
 - The ```data``` folder contains videos for testing and generated from our algorithms.
+- The ```results``` folder contains the results of our experiments comparing our solutions.
 
 For our face detection task, we acknowledge two GitHub projects:
 - Tim Esler's implementation of MTCNN in PyTorch: https://github.com/timesler/facenet-pytorch
